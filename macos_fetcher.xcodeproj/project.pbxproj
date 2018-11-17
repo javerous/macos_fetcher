@@ -244,6 +244,7 @@
 				CODE_SIGN_STYLE = Automatic;
 				CREATE_INFOPLIST_SECTION_IN_BINARY = YES;
 				INFOPLIST_FILE = macos_fetcher/Info.plist;
+				PRODUCT_BUNDLE_IDENTIFIER = "com.sourcemac.macos-fetcher";
 				PRODUCT_NAME = "$(TARGET_NAME)";
 			};
 			name = Debug;
@@ -254,6 +255,7 @@
 				CODE_SIGN_STYLE = Automatic;
 				CREATE_INFOPLIST_SECTION_IN_BINARY = YES;
 				INFOPLIST_FILE = macos_fetcher/Info.plist;
+				PRODUCT_BUNDLE_IDENTIFIER = "com.sourcemac.macos-fetcher";
 				PRODUCT_NAME = "$(TARGET_NAME)";
 			};
 			name = Release;
