@@ -625,6 +625,8 @@ int main(int argc, const char * argv[])
 		
 		if ([configuration respondsToSelector:@selector(set_directoryForDownloadedFiles:)])
 			[configuration set_directoryForDownloadedFiles:temporaryDirectoryURL];
+		else
+			fprintf(stderr, "Warning: Cannot change default temporary download directory.\n");
 		
 		_urlSession = [NSURLSession sessionWithConfiguration:configuration delegate:self delegateQueue:nil];
 	}
