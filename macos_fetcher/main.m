@@ -60,7 +60,7 @@ int main(int argc, const char * argv[])
 	dispatch_block_t usage = ^{
 		fprintf(stderr, "Usage: %s <options>\n", getprogname());
 		fprintf(stderr, "  -o / --output path           Directory on which the installer should be saved. Default: user downloads directory.\n");
-		fprintf(stderr, "  -c / --catalog URL           Catalog to use. Default: 10.9 to 10.14 merged catalog.\n");
+		fprintf(stderr, "  -c / --catalog URL           Catalog to use. Default: 10.9 to 10.15 merged catalog.\n");
 		fprintf(stderr, "  -s / --select build/id       Pre-select which product to use. Can be a macOS build number or a catalog product id. Default: ask interactively.\n");
 		fprintf(stderr, "  -v / --version               Print current version.\n");
 	};
