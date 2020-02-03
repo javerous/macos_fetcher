@@ -244,17 +244,17 @@ int main(int argc, const char * argv[])
 	
 	if (macosProducts.count == 0)
 	{
-		fprintf(stderr, "[-] Cannot find valid macOS installer in catalog.\n");
+		fprintf(stderr, "[-] Cannot find valid macOS installer or updaters in catalog.\n");
 		return 1;
 	}
 	
-	fprintf(stderr, "[#] Found %lu macOS installers.\n", macosProducts.count);
-	
+	fprintf(stderr, "[#] Found %lu macOS installers and updaters.\n", macosProducts.count);
+
 	
 	// Fetch product info.
 	NSArray *productKeys = [macosProducts allKeys];
 
-	fprintf(stderr, "[+] Gathering macOS installers informations...\n");
+	fprintf(stderr, "[+] Gathering informations...\n");
 	
 	for (NSString *productKey in productKeys)
 	{
