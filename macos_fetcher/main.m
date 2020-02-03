@@ -749,7 +749,7 @@ int main(int argc, const char * argv[])
 			return 1;
 		}
 		
-		fprintf(stderr, "[#] Everything done with success. Your can find the updater at path '%s'.\n", resultPkgURL.fileSystemRepresentation);
+		fprintf(stderr, "[#] Everything done with success. Your can find the package at path '%s'.\n", resultPkgURL.fileSystemRepresentation);
 		fprintf(stderr, "[#] Notes:\n");
 		fprintf(stderr, "[#] You can install it by using: installer -pkg '%s' -target /Volumes/xxx.\n", resultPkgURL.fileSystemRepresentation);
 		fprintf(stderr, "[#] You will probably need to run 'kextcache -i /' and 'update_dyld_shared_cache' on the updated system.\n");
