@@ -152,19 +152,19 @@ int main(int argc, const char * argv[])
 	
 	
 	// Parse catalog.
-	fprintf(stderr, "[+] Parsing the catalog file...\n");
+	fprintf(stderr, "[+] Parsing the catalog...\n");
 
 	id plist = [NSPropertyListSerialization propertyListWithData:catalogData options:0 format:nil error:&error];
 	
 	if (!plist)
 	{
-		fprintf(stderr, "[-] Cannot parse the catalog file (%s).\n", error.localizedDescription.UTF8String);
+		fprintf(stderr, "[-] Cannot parse the catalog (%s).\n", error.localizedDescription.UTF8String);
 		return 1;
 	}
 	
 	
 	// Search macOS installers.
-	fprintf(stderr, "[+] Searching for macOS installer in catalog...\n");
+	fprintf(stderr, "[+] Searching for macOS installer and updaters in catalog...\n");
 
 	NSDictionary 		*catalogRoot = MFDynamicCast(NSDictionary, plist);
 	NSDictionary		*products = MFDynamicCast(NSDictionary, catalogRoot[@"Products"]);
@@ -232,7 +232,7 @@ int main(int argc, const char * argv[])
 		else if (isComboUpdate)
 		{
 			macosProduct[MFProductTypeKey] = MFProductTypeUpdater;
-			macosProduct[MFProductUrlsKey] = @"urls";
+			macosProduct[MFProductUrlsKey] = productURLs;
 		}
 		else
 			continue;
@@ -266,7 +266,7 @@ int main(int argc, const char * argv[])
 		
 		if (!distributionData)
 		{
-			fprintf(stderr, "[~] Cannot fetch information %s (%s).\n", productKey.UTF8String, error.description.UTF8String);
+			fprintf(stderr, "[~] Cannot download distribution file for %s (%s).\n", productKey.UTF8String, error.description.UTF8String);
 			[macosProducts removeObjectForKey:productKey];
 			continue;
 		}
@@ -276,7 +276,7 @@ int main(int argc, const char * argv[])
 		
 		if (!distribution)
 		{
-			fprintf(stderr, "[~] Cannot parse information %s (%s).\n", productKey.UTF8String, error.description.UTF8String);
+			fprintf(stderr, "[~] Cannot parse distribution for %s (%s).\n", productKey.UTF8String, error.description.UTF8String);
 			[macosProducts removeObjectForKey:productKey];
 			continue;
 		}
@@ -429,203 +429,336 @@ int main(int argc, const char * argv[])
 	[[NSFileManager defaultManager] createDirectoryAtURL:tempDownloadDirectoryURL withIntermediateDirectories:YES attributes:nil error:nil];
 	
 	
-	// Download files.
-	MFURLSessionDownloadTask	*downloadTask = [[MFURLSessionDownloadTask alloc] initWithTemporaryDirectoryURL:tempDownloadDirectoryURL];
-	NSMutableDictionary			*downloadedDict = [[NSMutableDictionary alloc] init];
-
-	NSArray *downloadArray = @[
-		@{ @"key" : @"installAssistantAutoURL",	@"url" : macosProductSelected[@"installAssistantAutoURL"] },
-		@{ @"key" : @"recoveryMetaURL", 		@"url" : macosProductSelected[@"recoveryMetaURL"] },
-		@{ @"key" : @"installESDURL", 			@"url" : macosProductSelected[@"installESDURL"] }
-	];
+	// Handle installer.
+	NSString *selectedProductType = macosProductSelected[MFProductTypeKey];
 	
-	for (NSDictionary *downloadDescriptor in downloadArray)
+	if ([selectedProductType isEqualToString:MFProductTypeInstaller])
 	{
-		NSString	*downloadKey = downloadDescriptor[@"key"];
-		NSURL 		*downloadUrl = downloadDescriptor[@"url"];
+		// Download files.
+		MFURLSessionDownloadTask	*downloadTask = [[MFURLSessionDownloadTask alloc] initWithTemporaryDirectoryURL:tempDownloadDirectoryURL];
+		NSMutableDictionary			*downloadedDict = [[NSMutableDictionary alloc] init];
 		
-		fprintf(stderr, "[+] Downloading %s...", downloadUrl.lastPathComponent.UTF8String);
-
-		NSURL *targetURL = [downloadTask synchronouslyDownloadURL:downloadUrl targetDirectory:tempDirectoryURL error:&error updateHandler:^(uint64_t totalBytesWritten, uint64_t totalBytesExpectedToWrite) {
-			char 		progressBar[21];
-			double		percent = (double)MIN(totalBytesWritten, totalBytesExpectedToWrite) / (double)totalBytesExpectedToWrite;
-			uint64_t	barSize = percent * 20.0;
-			
-			memset(progressBar, ' ', sizeof(progressBar));
-			memset(progressBar, '=', barSize);
-			progressBar[sizeof(progressBar) - 1] = 0;
-			
-			fprintf(stderr, "\r[+] Downloading %s [%s] %u%%", downloadUrl.lastPathComponent.UTF8String, progressBar, (unsigned)(percent * 100.0));
-		}];
+		NSArray *downloadArray = @[
+			@{ @"key" : @"installAssistantAutoURL",	@"url" : macosProductSelected[@"installAssistantAutoURL"] },
+			@{ @"key" : @"recoveryMetaURL", 		@"url" : macosProductSelected[@"recoveryMetaURL"] },
+			@{ @"key" : @"installESDURL", 			@"url" : macosProductSelected[@"installESDURL"] }
+		];
 		
-		fprintf(stderr, "\n");
-		
-		if (!targetURL)
+		for (NSDictionary *downloadDescriptor in downloadArray)
 		{
-			fprintf(stderr, "[-] Cannot download %s (%s).\n", downloadUrl.lastPathComponent.UTF8String, error.localizedDescription.UTF8String);
+			NSString	*downloadKey = downloadDescriptor[@"key"];
+			NSURL 		*downloadUrl = downloadDescriptor[@"url"];
+			
+			fprintf(stderr, "[+] Downloading %s...", downloadUrl.lastPathComponent.UTF8String);
+			
+			NSURL *targetURL = [downloadTask synchronouslyDownloadURL:downloadUrl targetDirectory:tempDirectoryURL error:&error updateHandler:^(uint64_t totalBytesWritten, uint64_t totalBytesExpectedToWrite) {
+				char 		progressBar[21];
+				double		percent = (double)MIN(totalBytesWritten, totalBytesExpectedToWrite) / (double)totalBytesExpectedToWrite;
+				uint64_t	barSize = percent * 20.0;
+				
+				memset(progressBar, ' ', sizeof(progressBar));
+				memset(progressBar, '=', barSize);
+				progressBar[sizeof(progressBar) - 1] = 0;
+				
+				fprintf(stderr, "\r[+] Downloading %s [%s] %u%%", downloadUrl.lastPathComponent.UTF8String, progressBar, (unsigned)(percent * 100.0));
+			}];
+			
+			fprintf(stderr, "\n");
+			
+			if (!targetURL)
+			{
+				fprintf(stderr, "[-] Cannot download %s (%s).\n", downloadUrl.lastPathComponent.UTF8String, error.localizedDescription.UTF8String);
+				return 1;
+			}
+			
+			downloadedDict[downloadKey] = targetURL;
+		}
+		
+		
+		// Extract install assistant app.
+		NSTask	*taskPkgExtract = [[NSTask alloc] init];
+		NSURL	*inputInstallAssistantArchiveFileURL = downloadedDict[@"installAssistantAutoURL"];
+		NSURL	*outputInstallAssistantDirectoryURL = [tempDirectoryURL URLByAppendingPathComponent:@"InstallAssistantAuto"];
+		
+		fprintf(stderr, "[+] Extracting install assistant application...\n");
+		
+		taskPkgExtract.launchPath = @"/usr/sbin/pkgutil";
+		taskPkgExtract.arguments = @[ @"--expand-full", inputInstallAssistantArchiveFileURL.path, outputInstallAssistantDirectoryURL.path ];
+		taskPkgExtract.standardInput = [NSFileHandle fileHandleWithNullDevice];
+		taskPkgExtract.standardOutput = [NSFileHandle fileHandleWithNullDevice];
+		taskPkgExtract.standardError = [NSFileHandle fileHandleWithNullDevice];
+		
+		[taskPkgExtract launch];
+		[taskPkgExtract waitUntilExit];
+		
+		if (taskPkgExtract.terminationStatus != 0)
+		{
+			fprintf(stderr, "[-] Cannot extract install assistant application.\n");
 			return 1;
 		}
 		
-		downloadedDict[downloadKey] = targetURL;
-	}
-	
-	
-	// Extract install assistant app.
-	NSTask	*taskPkgExtract = [[NSTask alloc] init];
-	NSURL	*inputInstallAssistantArchiveFileURL = downloadedDict[@"installAssistantAutoURL"];
-	NSURL	*outputInstallAssistantDirectoryURL = [tempDirectoryURL URLByAppendingPathComponent:@"InstallAssistantAuto"];
-
-	fprintf(stderr, "[+] Extracting install assistant application...\n");
-	
-	taskPkgExtract.launchPath = @"/usr/sbin/pkgutil";
-	taskPkgExtract.arguments = @[ @"--expand-full", inputInstallAssistantArchiveFileURL.path, outputInstallAssistantDirectoryURL.path ];
-	taskPkgExtract.standardInput = [NSFileHandle fileHandleWithNullDevice];
-	taskPkgExtract.standardOutput = [NSFileHandle fileHandleWithNullDevice];
-	taskPkgExtract.standardError = [NSFileHandle fileHandleWithNullDevice];
-
-	[taskPkgExtract launch];
-	[taskPkgExtract waitUntilExit];
-	
-	if (taskPkgExtract.terminationStatus != 0)
-	{
-		fprintf(stderr, "[-] Cannot extract install assistant application.\n");
-		return 1;
-	}
-
-	
-	// Search install assistant app.
-	NSDirectoryEnumerator<NSURL *> *outputInstallAssistantDirectoryEnumerator = [[NSFileManager defaultManager] enumeratorAtURL:outputInstallAssistantDirectoryURL includingPropertiesForKeys:nil options:0 errorHandler:nil];
-	NSBundle *installAssistantAppBundle = nil;
-
-	fprintf(stderr, "[+] Locate install assistant application...\n");
-
-	for (NSURL *url in outputInstallAssistantDirectoryEnumerator)
-	{
-		NSBundle	*bundle = nil;
-		NSNumber	*isDirectory = nil;
-
-		[url getResourceValue:&isDirectory forKey:NSURLIsDirectoryKey error:nil];
 		
-		if ([isDirectory boolValue] == NO)
-			continue;
+		// Search install assistant app.
+		NSDirectoryEnumerator<NSURL *> *outputInstallAssistantDirectoryEnumerator = [[NSFileManager defaultManager] enumeratorAtURL:outputInstallAssistantDirectoryURL includingPropertiesForKeys:nil options:0 errorHandler:nil];
+		NSBundle *installAssistantAppBundle = nil;
 		
-		if ([url.pathExtension isEqualToString:@"app"] == NO)
-			continue;
+		fprintf(stderr, "[+] Locate install assistant application...\n");
 		
-		bundle = [NSBundle bundleWithURL:url];
-		
-		if ([bundle sharedSupportPath] == nil)
-			continue;
-		
-		installAssistantAppBundle = bundle;
-		break;
-	}
-	
-	if (!installAssistantAppBundle)
-	{
-		fprintf(stderr, "[-] Cannot find install assistant application.\n");
-		return 1;
-	}
-	
-	
-	// Attach recovery meta.
-	NSTask	*taskRecoveryAttach = [[NSTask alloc] init];
-	NSURL	*inputRecoveryMetaFileURL = downloadedDict[@"recoveryMetaURL"];
-	NSURL	*outputRecoveryMetaMountURL = [tempDirectoryURL URLByAppendingPathComponent:@"RecoveryHDMetaDmg"];
-	
-	fprintf(stderr, "[+] Attach recovery image...\n");
-
-	[[NSFileManager defaultManager] createDirectoryAtURL:outputRecoveryMetaMountURL withIntermediateDirectories:YES attributes:nil error:nil];
-	
-	taskRecoveryAttach.launchPath = @"/usr/bin/hdiutil";
-	taskRecoveryAttach.arguments = @[ @"attach", @"-readonly", @"-mountpoint", outputRecoveryMetaMountURL.path, @"-nobrowse", inputRecoveryMetaFileURL.path ];
-	taskRecoveryAttach.standardInput = [NSFileHandle fileHandleWithNullDevice];
-	taskRecoveryAttach.standardOutput = [NSFileHandle fileHandleWithNullDevice];
-	taskRecoveryAttach.standardError = [NSFileHandle fileHandleWithNullDevice];
-	
-	[taskRecoveryAttach launch];
-	[taskRecoveryAttach waitUntilExit];
-	
-	if (taskRecoveryAttach.terminationStatus != 0)
-	{
-		fprintf(stderr, "[-] Cannot mount meta image disk.\n");
-		return 1;
-	}
-	
-	_onExit {
-		NSTask *taskRecoveryDetach = [[NSTask alloc] init];
-		
-		taskRecoveryDetach.launchPath = @"/usr/bin/hdiutil";
-		taskRecoveryDetach.arguments = @[ @"detach", outputRecoveryMetaMountURL.path, @"-force" ];
-		taskRecoveryDetach.standardInput = [NSFileHandle fileHandleWithNullDevice];
-		taskRecoveryDetach.standardOutput = [NSFileHandle fileHandleWithNullDevice];
-		taskRecoveryDetach.standardError = [NSFileHandle fileHandleWithNullDevice];
-		
-		[taskRecoveryDetach launch];
-		[taskRecoveryDetach waitUntilExit];
-	};
-	
-	
-	// Copy files to app.
-	NSURL *installAssistantSharedSupportURL = [installAssistantAppBundle sharedSupportURL];
-	
-	__auto_type copyFile = ^ BOOL (NSURL *sourceDirURL, NSURL *targetDirURL, NSString *filename) {
-		
-		NSURL 	*sourceFileURL = [sourceDirURL URLByAppendingPathComponent:filename];
-		NSURL 	*targetFileURL = [targetDirURL URLByAppendingPathComponent:filename];
-		NSError	*copyError = nil;
-
-		if ([[NSFileManager defaultManager] copyItemAtURL:sourceFileURL toURL:targetFileURL error:&copyError] == NO)
+		for (NSURL *url in outputInstallAssistantDirectoryEnumerator)
 		{
-			fprintf(stderr, "[-] Cannot copy file '%s' (%s).\n", filename.UTF8String, copyError.description.UTF8String);
-			return NO;
+			NSBundle	*bundle = nil;
+			NSNumber	*isDirectory = nil;
+			
+			[url getResourceValue:&isDirectory forKey:NSURLIsDirectoryKey error:nil];
+			
+			if ([isDirectory boolValue] == NO)
+				continue;
+			
+			if ([url.pathExtension isEqualToString:@"app"] == NO)
+				continue;
+			
+			bundle = [NSBundle bundleWithURL:url];
+			
+			if ([bundle sharedSupportPath] == nil)
+				continue;
+			
+			installAssistantAppBundle = bundle;
+			break;
 		}
 		
-		return YES;
-	};
+		if (!installAssistantAppBundle)
+		{
+			fprintf(stderr, "[-] Cannot find install assistant application.\n");
+			return 1;
+		}
+		
+		
+		// Attach recovery meta.
+		NSTask	*taskRecoveryAttach = [[NSTask alloc] init];
+		NSURL	*inputRecoveryMetaFileURL = downloadedDict[@"recoveryMetaURL"];
+		NSURL	*outputRecoveryMetaMountURL = [tempDirectoryURL URLByAppendingPathComponent:@"RecoveryHDMetaDmg"];
+		
+		fprintf(stderr, "[+] Attach recovery image...\n");
+		
+		[[NSFileManager defaultManager] createDirectoryAtURL:outputRecoveryMetaMountURL withIntermediateDirectories:YES attributes:nil error:nil];
+		
+		taskRecoveryAttach.launchPath = @"/usr/bin/hdiutil";
+		taskRecoveryAttach.arguments = @[ @"attach", @"-readonly", @"-mountpoint", outputRecoveryMetaMountURL.path, @"-nobrowse", inputRecoveryMetaFileURL.path ];
+		taskRecoveryAttach.standardInput = [NSFileHandle fileHandleWithNullDevice];
+		taskRecoveryAttach.standardOutput = [NSFileHandle fileHandleWithNullDevice];
+		taskRecoveryAttach.standardError = [NSFileHandle fileHandleWithNullDevice];
+		
+		[taskRecoveryAttach launch];
+		[taskRecoveryAttach waitUntilExit];
+		
+		if (taskRecoveryAttach.terminationStatus != 0)
+		{
+			fprintf(stderr, "[-] Cannot mount meta image disk.\n");
+			return 1;
+		}
+		
+		_onExit {
+			NSTask *taskRecoveryDetach = [[NSTask alloc] init];
+			
+			taskRecoveryDetach.launchPath = @"/usr/bin/hdiutil";
+			taskRecoveryDetach.arguments = @[ @"detach", outputRecoveryMetaMountURL.path, @"-force" ];
+			taskRecoveryDetach.standardInput = [NSFileHandle fileHandleWithNullDevice];
+			taskRecoveryDetach.standardOutput = [NSFileHandle fileHandleWithNullDevice];
+			taskRecoveryDetach.standardError = [NSFileHandle fileHandleWithNullDevice];
+			
+			[taskRecoveryDetach launch];
+			[taskRecoveryDetach waitUntilExit];
+		};
+		
+		
+		// Copy files to app.
+		NSURL *installAssistantSharedSupportURL = [installAssistantAppBundle sharedSupportURL];
+		
+		__auto_type copyFile = ^ BOOL (NSURL *sourceDirURL, NSURL *targetDirURL, NSString *filename) {
+			
+			NSURL 	*sourceFileURL = [sourceDirURL URLByAppendingPathComponent:filename];
+			NSURL 	*targetFileURL = [targetDirURL URLByAppendingPathComponent:filename];
+			NSError	*copyError = nil;
+			
+			if ([[NSFileManager defaultManager] copyItemAtURL:sourceFileURL toURL:targetFileURL error:&copyError] == NO)
+			{
+				fprintf(stderr, "[-] Cannot copy file '%s' (%s).\n", filename.UTF8String, copyError.description.UTF8String);
+				return NO;
+			}
+			
+			return YES;
+		};
+		
+		fprintf(stderr, "[+] Copy files into install assistant application...\n");
+		
+		// > Recoveries.
+		if (copyFile(outputRecoveryMetaMountURL, installAssistantSharedSupportURL, @"AppleDiagnostics.chunklist") == NO)
+			return 1;
+		
+		if (copyFile(outputRecoveryMetaMountURL, installAssistantSharedSupportURL, @"AppleDiagnostics.dmg") == NO)
+			return 1;
+		
+		if (copyFile(outputRecoveryMetaMountURL, installAssistantSharedSupportURL, @"BaseSystem.chunklist") == NO)
+			return 1;
+		
+		if (copyFile(outputRecoveryMetaMountURL, installAssistantSharedSupportURL, @"BaseSystem.dmg") == NO)
+			return 1;
+		
+		// > ESD image.
+		NSURL *inputESDFileURL = downloadedDict[@"installESDURL"];
+		NSURL *outputESDFileURL = [installAssistantSharedSupportURL URLByAppendingPathComponent:@"InstallESD.dmg"];
+		
+		if ([[NSFileManager defaultManager] moveItemAtURL:inputESDFileURL toURL:outputESDFileURL error:&error] == NO)
+		{
+			fprintf(stderr, "[-] Cannot copy ESD image file (%s).\n", error.localizedDescription.UTF8String);
+			return 1;
+		}
+		
+		
+		// Move install assistant app to target directory.
+		NSURL *inputApplicationDirectoryURL = [installAssistantAppBundle bundleURL];
+		NSURL *outputApplicationDirectoryURL = [targetDirectoryURL URLByAppendingPathComponent:inputApplicationDirectoryURL.lastPathComponent];
+		
+		if ([[NSFileManager defaultManager] moveItemAtURL:inputApplicationDirectoryURL toURL:outputApplicationDirectoryURL error:&error] == NO)
+		{
+			fprintf(stderr, "[-] Cannot move install assistant application to final directory.\n");
+			return 1;
+		}
+		
+		// Done.
+		fprintf(stderr, "[#] Everything done with success. Your can find the installer at path '%s'.\n", outputApplicationDirectoryURL.fileSystemRepresentation);
 	
-	fprintf(stderr, "[+] Copy files into install assistant application...\n");
-
-	// > Recoveries.
-	if (copyFile(outputRecoveryMetaMountURL, installAssistantSharedSupportURL, @"AppleDiagnostics.chunklist") == NO)
-		return 1;
-	
-	if (copyFile(outputRecoveryMetaMountURL, installAssistantSharedSupportURL, @"AppleDiagnostics.dmg") == NO)
-		return 1;
-	
-	if (copyFile(outputRecoveryMetaMountURL, installAssistantSharedSupportURL, @"BaseSystem.chunklist") == NO)
-		return 1;
-	
-	if (copyFile(outputRecoveryMetaMountURL, installAssistantSharedSupportURL, @"BaseSystem.dmg") == NO)
-		return 1;
-
-	// > ESD image.
-	NSURL *inputESDFileURL = downloadedDict[@"installESDURL"];
-	NSURL *outputESDFileURL = [installAssistantSharedSupportURL URLByAppendingPathComponent:@"InstallESD.dmg"];
-
-	if ([[NSFileManager defaultManager] moveItemAtURL:inputESDFileURL toURL:outputESDFileURL error:&error] == NO)
-	{
-		fprintf(stderr, "[-] Cannot copy ESD image file (%s).\n", error.localizedDescription.UTF8String);
-		return 1;
+		return 0;
 	}
-	
-	
-	// Move install assistant app to target directory.
-	NSURL *inputApplicationDirectoryURL = [installAssistantAppBundle bundleURL];
-	NSURL *outputApplicationDirectoryURL = [targetDirectoryURL URLByAppendingPathComponent:inputApplicationDirectoryURL.lastPathComponent];
-	
-	if ([[NSFileManager defaultManager] moveItemAtURL:inputApplicationDirectoryURL toURL:outputApplicationDirectoryURL error:&error] == NO)
+	else if ([selectedProductType isEqualToString:MFProductTypeUpdater])
 	{
-		fprintf(stderr, "[-] Cannot move install assistant application to final directory.\n");
-		return 1;
-	}
-	
-	
-	// Done.
-	fprintf(stderr, "[#] Everything done with success. Your can find the installer at path '%s'.\n", outputApplicationDirectoryURL.fileSystemRepresentation);
+		// Parse distribution data.
+		NSData 			*distData = macosProductSelected[MFProductDistributionDataKey];
+		NSXMLDocument	*distribution = [[NSXMLDocument alloc] initWithData:distData options:NSXMLNodeOptionsNone error:&error];
+		
+		if (!distribution)
+		{
+			fprintf(stderr, "[-] Cannot parse distribution data.\n");
+			return 1;
+		}
+		
+		
+		// FIXME: Add the ability to remove checks, like 'volume-check', 'installation-check', etc.
+		
+		
+		// Search dist pkgs.
+		NSXMLElement				*rootElement = distribution.rootElement;
+		NSArray <NSXMLNode *>		*pkgNodes = [rootElement nodesForXPath:@"/installer-gui-script/choice/pkg-ref" error:&error];
+		NSMutableSet <NSString *>	*distPkgs = [NSMutableSet set];
+		
+		for (NSXMLNode *pkgNode in pkgNodes)
+			[distPkgs addObject:pkgNode.stringValue];
 
-	
-	return 0;
+		if (distPkgs.count == 0)
+		{
+			fprintf(stderr, "[-] Cannot find packages in distribution data.\n");
+			return 1;
+		}
+		
+		
+		// Extract URLs we need to download.
+		NSArray <NSURL *>		*productURLs = macosProductSelected[MFProductUrlsKey];
+		NSMutableSet <NSURL *>	*downloadableURLs = [NSMutableSet set];
+		
+		for (NSString *pkg in distPkgs)
+		{
+			BOOL found = NO;
+			
+			for (NSURL *productURL in productURLs)
+			{
+				if ([[productURL lastPathComponent] isEqualToString:pkg])
+				{
+					[downloadableURLs addObject:productURL];
+					found = YES;
+					break;
+				}
+			}
+			
+			if (!found)
+			{
+				fprintf(stderr, "[-] Cannot find package '%s' in catalog.\n", pkg.UTF8String);
+				return 1;
+			}
+		}
+		
+		
+		// Write dist file.
+		NSURL *distFileURL = [tempDirectoryURL URLByAppendingPathComponent:@"package.dist"];
+		
+		if ([distData writeToURL:distFileURL options:0 error:&error] == NO)
+		{
+			fprintf(stderr, "[-] Cannot write distribution file to '%s': %s.\n", distFileURL.fileSystemRepresentation, error.localizedDescription.UTF8String);
+			return 1;
+		}
+		
+		
+		// Download files.
+		MFURLSessionDownloadTask *downloadTask = [[MFURLSessionDownloadTask alloc] initWithTemporaryDirectoryURL:tempDownloadDirectoryURL];
+
+		for (NSURL *downloadURL in downloadableURLs)
+		{
+			// > Download.
+			fprintf(stderr, "[+] Downloading %s...", downloadURL.lastPathComponent.UTF8String);
+			
+			NSURL *targetURL = [downloadTask synchronouslyDownloadURL:downloadURL targetDirectory:tempDirectoryURL error:&error updateHandler:^(uint64_t totalBytesWritten, uint64_t totalBytesExpectedToWrite) {
+				char 		progressBar[21];
+				double		percent = (double)MIN(totalBytesWritten, totalBytesExpectedToWrite) / (double)totalBytesExpectedToWrite;
+				uint64_t	barSize = percent * 20.0;
+				
+				memset(progressBar, ' ', sizeof(progressBar));
+				memset(progressBar, '=', barSize);
+				progressBar[sizeof(progressBar) - 1] = 0;
+				
+				fprintf(stderr, "\r[+] Downloading %s [%s] %u%%", downloadURL.lastPathComponent.UTF8String, progressBar, (unsigned)(percent * 100.0));
+			}];
+			
+			fprintf(stderr, "\n");
+			
+			if (!targetURL)
+			{
+				fprintf(stderr, "[-] Cannot download %s (%s).\n", downloadURL.lastPathComponent.UTF8String, error.localizedDescription.UTF8String);
+				return 1;
+			}
+		}
+		
+		
+		// Create final pkg.
+		NSString	*resultPkgFilename = [NSString stringWithFormat:@"macOSUpdateCombo%@_%@.pkg", macosProductSelected[MFProductVersionKey], macosProductSelected[MFProductBuildKey]];
+		NSURL		*resultPkgURL = [targetDirectoryURL URLByAppendingPathComponent:resultPkgFilename];
+		NSTask		*taskProductBuild = [[NSTask alloc] init];
+
+		fprintf(stderr, "[+] Creating distribution package...\n");
+
+		taskProductBuild.launchPath = @"/usr/bin/productbuild";
+		taskProductBuild.arguments = @[ @"--distribution", distFileURL.path, @"--package-path", tempDirectoryURL.path, resultPkgURL.path ];
+		taskProductBuild.standardInput = [NSFileHandle fileHandleWithNullDevice];
+		taskProductBuild.standardOutput = [NSFileHandle fileHandleWithNullDevice];
+		taskProductBuild.standardError = [NSFileHandle fileHandleWithNullDevice];
+		
+		[taskProductBuild launch];
+		[taskProductBuild waitUntilExit];
+		
+		if (taskProductBuild.terminationStatus != 0)
+		{
+			fprintf(stderr, "[-] Cannot create updater pkg.\n");
+			return 1;
+		}
+		
+		fprintf(stderr, "[#] Everything done with success. Your can find the updater at path '%s'.\n", resultPkgURL.fileSystemRepresentation);
+		fprintf(stderr, "[#] Notes:\n");
+		fprintf(stderr, "[#] You can install it by using: installer -pkg '%s' -target /Volumes/xxx.\n", resultPkgURL.fileSystemRepresentation);
+		fprintf(stderr, "[#] You will probably need to run 'kextcache -i /' and 'update_dyld_shared_cache' on the updated system.\n");
+	}
+	else
+	{
+		fprintf(stderr, "[-] Internal error: unknow product type.\n");
+		return 1;
+	}	
 }
 
 
