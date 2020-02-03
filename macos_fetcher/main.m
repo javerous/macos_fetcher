@@ -22,6 +22,18 @@
 
 #define MFDynamicCast(Class, Object) ({ id __obj = (Object); ([__obj isKindOfClass:[Class class]] ? ((Class *)(__obj)) : nil); })
 
+#define MFProductTypeKey				@"type"
+#define MFProductTypeInstaller			@"installer"
+#define MFProductTypeUpdater			@"updater"
+
+#define MFProductUrlsKey				@"urls"
+
+#define MFProductDistributionURLKey		@"distribution-url"
+#define MFProductDistributionDataKey	@"distribution-data"
+
+#define MFProductBuildKey				@"build"
+#define MFProductVersionKey				@"version"
+
 
 
 /*
@@ -59,7 +71,7 @@ int main(int argc, const char * argv[])
 	// Parse parameters.
 	dispatch_block_t usage = ^{
 		fprintf(stderr, "Usage: %s <options>\n", getprogname());
-		fprintf(stderr, "  -o / --output path           Directory on which the installer should be saved. Default: user downloads directory.\n");
+		fprintf(stderr, "  -o / --output path           Directory on which the installer or updater should be saved. Default: user downloads directory.\n");
 		fprintf(stderr, "  -c / --catalog URL           Catalog to use. Default: 10.9 to 10.15 merged catalog.\n");
 		fprintf(stderr, "  -s / --select build/id       Pre-select which product to use. Can be a macOS build number or a catalog product id. Default: ask interactively.\n");
 		fprintf(stderr, "  -v / --version               Print current version.\n");
@@ -173,37 +185,59 @@ int main(int argc, const char * argv[])
 		NSURL	*recoveryMetaURL = nil;
 		NSURL	*installAssistantAutoURL = nil;
 		NSURL	*installESDURL = nil;
+		NSMutableArray <NSURL *> *productURLs = [NSMutableArray array];
+		BOOL isComboUpdate = NO;
 
 		for (id entry in packages)
 		{
 			NSDictionary	*package = MFDynamicCast(NSDictionary, entry);
 			NSString		*urlString =  MFDynamicCast(NSString, package[@"URL"]);
+			NSURL			*url = [NSURL URLWithString:urlString];
 			
 			if ([[urlString lastPathComponent] isEqualToString:@"RecoveryHDMetaDmg.pkg"])
-				recoveryMetaURL = [NSURL URLWithString:urlString];
+				recoveryMetaURL = url;
 			else if ([[urlString lastPathComponent] isEqualToString:@"InstallAssistantAuto.pkg"])
-				installAssistantAutoURL = [NSURL URLWithString:urlString];
+				installAssistantAutoURL = url;
 			else if ([[urlString lastPathComponent] isEqualToString:@"InstallESDDmg.pkg"])
-				installESDURL = [NSURL URLWithString:urlString];
+				installESDURL = url;
+			else if ([[urlString lastPathComponent] rangeOfString:@"macOSUpdCombo"].location != NSNotFound && [urlString.pathExtension isEqualToString:@"pkg"])
+				isComboUpdate = YES;
+			
+			if (url)
+				[productURLs addObject:url];
 		}
-		
-		if (!recoveryMetaURL || !installAssistantAutoURL || !installESDURL)
-			continue;
-		
+
 		// > Search distribution info.
 		NSDictionary	*distributions = MFDynamicCast(NSDictionary, product[@"Distributions"]);
-		NSString		*distributionURLString = MFDynamicCast(NSString, distributions[@"no"]);
+		NSString		*distributionURLString = MFDynamicCast(NSString, distributions[@"English"]);
 		
 		if (!distributionURLString)
-			continue;
+		{
+			distributionURLString = MFDynamicCast(NSString, distributions[@"no"]);
+			
+			if (!distributionURLString)
+				continue;
+		}
 		
 		// > Retain this product.
 		NSMutableDictionary *macosProduct = [[NSMutableDictionary alloc] init];
 		
-		macosProduct[@"recoveryMetaURL"] = recoveryMetaURL;
-		macosProduct[@"installAssistantAutoURL"] = installAssistantAutoURL;
-		macosProduct[@"installESDURL"] = installESDURL;
-		macosProduct[@"distributionURL"] = [NSURL URLWithString:distributionURLString];
+		if (recoveryMetaURL && installAssistantAutoURL && installESDURL)
+		{
+			macosProduct[MFProductTypeKey] = MFProductTypeInstaller;
+			macosProduct[@"recoveryMetaURL"] = recoveryMetaURL;
+			macosProduct[@"installAssistantAutoURL"] = installAssistantAutoURL;
+			macosProduct[@"installESDURL"] = installESDURL;
+		}
+		else if (isComboUpdate)
+		{
+			macosProduct[MFProductTypeKey] = MFProductTypeUpdater;
+			macosProduct[MFProductUrlsKey] = @"urls";
+		}
+		else
+			continue;
+		
+		macosProduct[MFProductDistributionURLKey] = [NSURL URLWithString:distributionURLString];
 		
 		macosProducts[productId] = macosProduct;
 	}
@@ -227,7 +261,7 @@ int main(int argc, const char * argv[])
 		NSMutableDictionary *macosProduct = macosProducts[productKey];
 		
 		// > Fetch dist data.
-		NSURL	*distributionURL = macosProduct[@"distributionURL"];
+		NSURL	*distributionURL = macosProduct[MFProductDistributionURLKey];
 		NSData	*distributionData = [NSData dataWithContentsOfURL:distributionURL options:0 error:&error];
 		
 		if (!distributionData)
@@ -272,8 +306,8 @@ int main(int argc, const char * argv[])
 		
 		// > Extract aux content.
 		NSDictionary 	*auxInfo = MFDynamicCast(NSDictionary, auxInfoPlist);
-		NSString		*auxInfoBuild = MFDynamicCast(NSString, auxInfo[@"BUILD"]);
-		NSString		*auxInfoVersion = MFDynamicCast(NSString, auxInfo[@"VERSION"]);
+		NSString		*auxInfoBuild = MFDynamicCast(NSString, auxInfo[@"BUILD"]) ?: MFDynamicCast(NSString, auxInfo[@"macOSProductBuildVersion"]);
+		NSString		*auxInfoVersion = MFDynamicCast(NSString, auxInfo[@"VERSION"]) ?: MFDynamicCast(NSString, auxInfo[@"macOSProductVersion"]);
 		
 		if (!auxInfoVersion || !auxInfoBuild)
 		{
@@ -283,8 +317,9 @@ int main(int argc, const char * argv[])
 		}
 
 		// > Store result.
-		macosProduct[@"build"] = auxInfoBuild;
-		macosProduct[@"version"] = auxInfoVersion;
+		macosProduct[MFProductBuildKey] = auxInfoBuild;
+		macosProduct[MFProductVersionKey] = auxInfoVersion;
+		macosProduct[MFProductDistributionDataKey] = distributionData;
 	}
 
 	
@@ -302,7 +337,7 @@ int main(int argc, const char * argv[])
 		for (NSString *productKey in macosProducts)
 		{
 			NSDictionary	*macosProduct = macosProducts[productKey];
-			NSString		*build = macosProduct[@"build"];
+			NSString		*build = macosProduct[MFProductBuildKey];
 			
 			if ([build isEqualToString:token])
 				return macosProduct;
@@ -331,17 +366,18 @@ int main(int argc, const char * argv[])
 			NSDictionary *item1 = macosProducts[key1];
 			NSDictionary *item2 = macosProducts[key2];
 			
-			return [item1[@"build"] compare:item2[@"build"] options:NSNumericSearch];
+			return [item1[MFProductBuildKey] compare:item2[MFProductBuildKey] options:NSNumericSearch];
 		}];
 		
 		// > Show what we found.
 		for (NSString *productKey in sortedMacosProductsKeys)
 		{
 			NSDictionary	*macosProduct = macosProducts[productKey];
-			NSString		*build = macosProduct[@"build"];
-			NSString		*version = macosProduct[@"version"];
+			NSString		*build = macosProduct[MFProductBuildKey];
+			NSString		*version = macosProduct[MFProductVersionKey];
+			NSString		*type = macosProduct[MFProductTypeKey];
 			
-			fprintf(stderr, "  > macOS %s (%s):\t%s\n", version.UTF8String, build.UTF8String, productKey.UTF8String);
+			fprintf(stderr, "  > macOS %s [%s] (%s):\t%s\n", version.UTF8String, type.UTF8String, build.UTF8String, productKey.UTF8String);
 		}
 		
 		// > Ask for selection
@@ -368,7 +404,7 @@ int main(int argc, const char * argv[])
 		}
 	}
 	
-	fprintf(stderr, "[#] You selected macOS %s (%s).\n", [macosProductSelected[@"version"] UTF8String], [macosProductSelected[@"build"] UTF8String]);
+	fprintf(stderr, "[#] You selected macOS %s (%s).\n", [macosProductSelected[MFProductVersionKey] UTF8String], [macosProductSelected[MFProductBuildKey] UTF8String]);
 	
 	
 	// Prepare tmp directory.
