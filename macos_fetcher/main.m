@@ -18,12 +18,14 @@
 */
 #pragma mark - Defines
 
-#define MFCatalogURLString @"https://swscan.apple.com/content/catalogs/others/index-10.15seed-10.15-10.14-10.13-10.12-10.11-10.10-10.9-mountainlion-lion-snowleopard-leopard.merged-1.sucatalog.gz"
+#define MFCatalogURLString @"http://swscan.apple.com/content/catalogs/others/index-10.16seed-10.16-10.15-10.14-10.13-10.12-10.11-10.10-10.9-mountainlion-lion-snowleopard-leopard.merged-1.sucatalog.gz"
 
 #define MFDynamicCast(Class, Object) ({ id __obj = (Object); ([__obj isKindOfClass:[Class class]] ? ((Class *)(__obj)) : nil); })
 
-#define MFProductTypeKey				@"type"
-#define MFProductTypeInstaller			@"installer"
+#define MFProductInternalTypeKey		@"internal-type"
+#define MFProductPublicTypeKey			@"public-type"
+#define MFProductTypeInstallerV1		@"installer-v1"
+#define MFProductTypeInstallerV2		@"installer-v2"
 #define MFProductTypeUpdater			@"updater"
 
 #define MFProductUrlsKey				@"urls"
@@ -184,9 +186,16 @@ int main(int argc, const char * argv[])
 		NSArray	*packages = MFDynamicCast(NSArray, product[@"Packages"]);
 		NSURL	*recoveryMetaURL = nil;
 		NSURL	*installAssistantAutoURL = nil;
+		NSURL	*installAssistantURL = nil;
+
 		NSURL	*installESDURL = nil;
 		NSMutableArray <NSURL *> *productURLs = [NSMutableArray array];
 		BOOL isComboUpdate = NO;
+
+		/*
+		if ([productId isEqualToString:@"001-18401-003"])
+			NSLog(@"%@", product);
+*/
 
 		for (id entry in packages)
 		{
@@ -200,6 +209,8 @@ int main(int argc, const char * argv[])
 				installAssistantAutoURL = url;
 			else if ([[urlString lastPathComponent] isEqualToString:@"InstallESDDmg.pkg"])
 				installESDURL = url;
+			if ([[urlString lastPathComponent] isEqualToString:@"InstallAssistant.pkg"])
+				installAssistantURL = url;
 			else if ([[urlString lastPathComponent] rangeOfString:@"macOSUpdCombo"].location != NSNotFound && [urlString.pathExtension isEqualToString:@"pkg"])
 				isComboUpdate = YES;
 			
@@ -224,14 +235,22 @@ int main(int argc, const char * argv[])
 		
 		if (recoveryMetaURL && installAssistantAutoURL && installESDURL)
 		{
-			macosProduct[MFProductTypeKey] = MFProductTypeInstaller;
+			macosProduct[MFProductInternalTypeKey] = MFProductTypeInstallerV1;
+			macosProduct[MFProductPublicTypeKey] = @"installer";
 			macosProduct[@"recoveryMetaURL"] = recoveryMetaURL;
 			macosProduct[@"installAssistantAutoURL"] = installAssistantAutoURL;
 			macosProduct[@"installESDURL"] = installESDURL;
 		}
+		else if (installAssistantURL)
+		{
+			macosProduct[MFProductInternalTypeKey] = MFProductTypeInstallerV2;
+			macosProduct[MFProductPublicTypeKey] = @"installer";
+			macosProduct[@"installAssistantURL"] = installAssistantURL;
+		}
 		else if (isComboUpdate)
 		{
-			macosProduct[MFProductTypeKey] = MFProductTypeUpdater;
+			macosProduct[MFProductInternalTypeKey] = MFProductTypeUpdater;
+			macosProduct[MFProductPublicTypeKey] = @"updater";
 			macosProduct[MFProductUrlsKey] = productURLs;
 		}
 		else
@@ -375,7 +394,7 @@ int main(int argc, const char * argv[])
 			NSDictionary	*macosProduct = macosProducts[productKey];
 			NSString		*build = macosProduct[MFProductBuildKey];
 			NSString		*version = macosProduct[MFProductVersionKey];
-			NSString		*type = macosProduct[MFProductTypeKey];
+			NSString		*type = macosProduct[MFProductPublicTypeKey];
 			
 			fprintf(stderr, "  > macOS %s [%s] (%s):\t%s\n", version.UTF8String, type.UTF8String, build.UTF8String, productKey.UTF8String);
 		}
@@ -430,9 +449,9 @@ int main(int argc, const char * argv[])
 	
 	
 	// Handle installer.
-	NSString *selectedProductType = macosProductSelected[MFProductTypeKey];
+	NSString *selectedProductType = macosProductSelected[MFProductInternalTypeKey];
 	
-	if ([selectedProductType isEqualToString:MFProductTypeInstaller])
+	if ([selectedProductType isEqualToString:MFProductTypeInstallerV1])
 	{
 		// Download files.
 		MFURLSessionDownloadTask	*downloadTask = [[MFURLSessionDownloadTask alloc] initWithTemporaryDirectoryURL:tempDownloadDirectoryURL];
@@ -443,7 +462,7 @@ int main(int argc, const char * argv[])
 			@{ @"key" : @"recoveryMetaURL", 		@"url" : macosProductSelected[@"recoveryMetaURL"] },
 			@{ @"key" : @"installESDURL", 			@"url" : macosProductSelected[@"installESDURL"] }
 		];
-		
+
 		for (NSDictionary *downloadDescriptor in downloadArray)
 		{
 			NSString	*downloadKey = downloadDescriptor[@"key"];
@@ -628,6 +647,164 @@ int main(int argc, const char * argv[])
 		// Done.
 		fprintf(stderr, "[#] Everything done with success. Your can find the installer at path '%s'.\n", outputApplicationDirectoryURL.fileSystemRepresentation);
 	
+		return 0;
+	}
+	else if ([selectedProductType isEqualToString:MFProductTypeInstallerV2])
+	{
+		// Download files.
+		MFURLSessionDownloadTask	*downloadTask = [[MFURLSessionDownloadTask alloc] initWithTemporaryDirectoryURL:tempDownloadDirectoryURL];
+		NSMutableDictionary			*downloadedDict = [[NSMutableDictionary alloc] init];
+
+		NSArray *downloadArray = @[
+			@{ @"key" : @"installAssistantURL",	@"url" : macosProductSelected[@"installAssistantURL"] },
+		];
+
+		for (NSDictionary *downloadDescriptor in downloadArray)
+		{
+			NSString	*downloadKey = downloadDescriptor[@"key"];
+			NSURL 		*downloadUrl = downloadDescriptor[@"url"];
+
+			fprintf(stderr, "[+] Downloading %s...", downloadUrl.lastPathComponent.UTF8String);
+
+			NSURL *targetURL = [downloadTask synchronouslyDownloadURL:downloadUrl targetDirectory:tempDirectoryURL error:&error updateHandler:^(uint64_t totalBytesWritten, uint64_t totalBytesExpectedToWrite) {
+				char 		progressBar[21];
+				double		percent = (double)MIN(totalBytesWritten, totalBytesExpectedToWrite) / (double)totalBytesExpectedToWrite;
+				uint64_t	barSize = percent * 20.0;
+
+				memset(progressBar, ' ', sizeof(progressBar));
+				memset(progressBar, '=', barSize);
+				progressBar[sizeof(progressBar) - 1] = 0;
+
+				fprintf(stderr, "\r[+] Downloading %s [%s] %u%%", downloadUrl.lastPathComponent.UTF8String, progressBar, (unsigned)(percent * 100.0));
+			}];
+
+			fprintf(stderr, "\n");
+
+			if (!targetURL)
+			{
+				fprintf(stderr, "[-] Cannot download %s (%s).\n", downloadUrl.lastPathComponent.UTF8String, error.localizedDescription.UTF8String);
+				return 1;
+			}
+
+			downloadedDict[downloadKey] = targetURL;
+		}
+
+
+		// Extract install assistant app.
+		NSTask	*taskPkgExtract = [[NSTask alloc] init];
+		NSURL	*inputInstallAssistantArchiveFileURL = downloadedDict[@"installAssistantURL"];
+		NSURL	*outputInstallAssistantDirectoryURL = [tempDirectoryURL URLByAppendingPathComponent:@"InstallAssistant"];
+
+		fprintf(stderr, "[+] Extracting install assistant...\n");
+
+		taskPkgExtract.launchPath = @"/usr/sbin/pkgutil";
+		taskPkgExtract.arguments = @[ @"--expand-full", inputInstallAssistantArchiveFileURL.path, outputInstallAssistantDirectoryURL.path ];
+		taskPkgExtract.standardInput = [NSFileHandle fileHandleWithNullDevice];
+		taskPkgExtract.standardOutput = [NSFileHandle fileHandleWithNullDevice];
+		taskPkgExtract.standardError = [NSFileHandle fileHandleWithNullDevice];
+
+		[taskPkgExtract launch];
+		[taskPkgExtract waitUntilExit];
+
+		if (taskPkgExtract.terminationStatus != 0)
+		{
+			fprintf(stderr, "[-] Cannot extract install assistant.\n");
+			return 1;
+		}
+
+
+		// Search install assistant app.
+		NSDirectoryEnumerator<NSURL *> *outputInstallAssistantDirectoryEnumerator = [[NSFileManager defaultManager] enumeratorAtURL:outputInstallAssistantDirectoryURL includingPropertiesForKeys:nil options:0 errorHandler:nil];
+		NSBundle	*installAssistantAppBundle = nil;
+		NSURL		*sharedSupportURL = nil;
+
+		fprintf(stderr, "[+] Locate install assistant application and shared support image...\n");
+
+		for (NSURL *url in outputInstallAssistantDirectoryEnumerator)
+		{
+			NSBundle	*bundle = nil;
+			NSNumber	*isDirectory = nil;
+			NSNumber	*isRegularFile = nil;
+
+			[url getResourceValue:&isDirectory forKey:NSURLIsDirectoryKey error:nil];
+			[url getResourceValue:&isRegularFile forKey:NSURLIsRegularFileKey error:nil];
+
+			if ([isDirectory boolValue])
+			{
+				if (installAssistantAppBundle)
+					continue;
+
+				if ([url.pathExtension isEqualToString:@"app"] == NO)
+					continue;
+
+				bundle = [NSBundle bundleWithURL:url];
+
+				installAssistantAppBundle = bundle;
+			}
+			else if ([isRegularFile boolValue])
+			{
+				NSNumber *fileSize = nil;
+
+				if (sharedSupportURL)
+					continue;
+
+				if ([url.pathExtension isEqualToString:@"dmg"] == NO)
+					continue;
+
+				[url getResourceValue:&fileSize forKey:NSURLFileSizeKey error:nil];
+
+				if (fileSize.unsignedLongLongValue < 3ULL * 1000ULL * 1000ULL * 1000ULL) // only file bigger than 3 GB
+					continue;
+
+				sharedSupportURL = url;
+			}
+
+			if (installAssistantAppBundle && sharedSupportURL)
+				break;
+		}
+
+		if (!installAssistantAppBundle)
+		{
+			fprintf(stderr, "[-] Cannot find install assistant application.\n");
+			return 1;
+		}
+
+		if (!sharedSupportURL)
+		{
+			fprintf(stderr, "[-] Cannot find shared support image.\n");
+			return 1;
+		}
+
+
+		// Copy files to app.
+		fprintf(stderr, "[+] Copy files into install assistant application...\n");
+
+		NSURL *installAssistantSharedSupportURL = [installAssistantAppBundle sharedSupportURL];
+		NSURL *outputSharedSupportFileURL = [installAssistantSharedSupportURL URLByAppendingPathComponent:sharedSupportURL.lastPathComponent];
+
+		[[NSFileManager defaultManager] createDirectoryAtURL:installAssistantSharedSupportURL withIntermediateDirectories:YES attributes:nil error:nil];
+
+		if ([[NSFileManager defaultManager] moveItemAtURL:sharedSupportURL toURL:outputSharedSupportFileURL error:&error] == NO)
+		{
+			fprintf(stderr, "[-] Cannot move shared support image file (%s).\n", error.localizedDescription.UTF8String);
+			return 1;
+		}
+
+
+		// Move install assistant app to target directory.
+		NSURL *inputApplicationDirectoryURL = [installAssistantAppBundle bundleURL];
+		NSURL *outputApplicationDirectoryURL = [targetDirectoryURL URLByAppendingPathComponent:inputApplicationDirectoryURL.lastPathComponent];
+
+		if ([[NSFileManager defaultManager] moveItemAtURL:inputApplicationDirectoryURL toURL:outputApplicationDirectoryURL error:&error] == NO)
+		{
+			fprintf(stderr, "[-] Cannot move install assistant application to final directory.\n");
+			return 1;
+		}
+
+
+		// Done.
+		fprintf(stderr, "[#] Everything done with success. Your can find the installer at path '%s'.\n", outputApplicationDirectoryURL.fileSystemRepresentation);
+
 		return 0;
 	}
 	else if ([selectedProductType isEqualToString:MFProductTypeUpdater])
