@@ -192,11 +192,6 @@ int main(int argc, const char * argv[])
 		NSMutableArray <NSURL *> *productURLs = [NSMutableArray array];
 		BOOL isComboUpdate = NO;
 
-		/*
-		if ([productId isEqualToString:@"001-18401-003"])
-			NSLog(@"%@", product);
-*/
-
 		for (id entry in packages)
 		{
 			NSDictionary	*package = MFDynamicCast(NSDictionary, entry);
@@ -387,16 +382,55 @@ int main(int argc, const char * argv[])
 			
 			return [item1[MFProductBuildKey] compare:item2[MFProductBuildKey] options:NSNumericSearch];
 		}];
-		
-		// > Show what we found.
-		for (NSString *productKey in sortedMacosProductsKeys)
+
+		// > Helper.
+		__auto_type paddedString = ^ NSString * (NSString *str, NSUInteger length)
 		{
-			NSDictionary	*macosProduct = macosProducts[productKey];
-			NSString		*build = macosProduct[MFProductBuildKey];
-			NSString		*version = macosProduct[MFProductVersionKey];
-			NSString		*type = macosProduct[MFProductPublicTypeKey];
-			
-			fprintf(stderr, "  > macOS %s [%s] (%s):\t%s\n", version.UTF8String, type.UTF8String, build.UTF8String, productKey.UTF8String);
+			NSUInteger padLength = (str.length > length ? 0 : length - str.length);
+
+			if (padLength == 0)
+				return str;
+
+			void *pad = malloc(padLength);
+
+			memset(pad, ' ', padLength);
+
+			return [NSString stringWithFormat:@"%@%@", str, [[NSString alloc] initWithBytesNoCopy:pad length:padLength encoding:NSASCIIStringEncoding freeWhenDone:YES]];
+		};
+
+		// > Show what we found.
+		NSUInteger versionLength = 0;
+		NSUInteger typeLength = 0;
+		NSUInteger buildLength = 0;
+
+		for (NSUInteger pass = 1; pass <= 2; pass++)
+		{
+			for (NSString *productKey in sortedMacosProductsKeys)
+			{
+				NSDictionary	*macosProduct = macosProducts[productKey];
+				NSString		*build = macosProduct[MFProductBuildKey];
+				NSString		*version = macosProduct[MFProductVersionKey];
+				NSString		*type = macosProduct[MFProductPublicTypeKey];
+
+				NSString		*formatedVersion = [NSString stringWithFormat:@"macOS %@", version];
+				NSString		*formatedType = [NSString stringWithFormat:@"[%@]", type];
+				NSString		*formatedBuild = [NSString stringWithFormat:@"(%@)", build];
+
+				if (pass == 1)
+				{
+					versionLength = MAX(versionLength, formatedVersion.length);
+					typeLength = MAX(typeLength, formatedType.length);
+					buildLength = MAX(buildLength, formatedBuild.length);
+				}
+				else if (pass == 2)
+				{
+					fprintf(stderr, "  > %s %s %s : %s\n",
+							paddedString(formatedVersion, versionLength).UTF8String,
+							paddedString(formatedType, typeLength).UTF8String,
+							paddedString(formatedBuild, buildLength).UTF8String,
+							productKey.UTF8String);
+				}
+			}
 		}
 		
 		// > Ask for selection
