@@ -750,9 +750,8 @@ int main(int argc, const char * argv[])
 		// Search install assistant app.
 		NSDirectoryEnumerator<NSURL *> *outputInstallAssistantDirectoryEnumerator = [[NSFileManager defaultManager] enumeratorAtURL:outputInstallAssistantDirectoryURL includingPropertiesForKeys:nil options:0 errorHandler:nil];
 		NSBundle	*installAssistantAppBundle = nil;
-		NSURL		*sharedSupportURL = nil;
 
-		fprintf(stderr, "[+] Locate install assistant application and shared support image...\n");
+		fprintf(stderr, "[+] Locate install assistant application...\n");
 
 		for (NSURL *url in outputInstallAssistantDirectoryEnumerator)
 		{
@@ -763,38 +762,17 @@ int main(int argc, const char * argv[])
 			[url getResourceValue:&isDirectory forKey:NSURLIsDirectoryKey error:nil];
 			[url getResourceValue:&isRegularFile forKey:NSURLIsRegularFileKey error:nil];
 
-			if ([isDirectory boolValue])
-			{
-				if (installAssistantAppBundle)
-					continue;
+			if (installAssistantAppBundle)
+				continue;
 
-				if ([url.pathExtension isEqualToString:@"app"] == NO)
-					continue;
+			if ([url.pathExtension isEqualToString:@"app"] == NO)
+				continue;
 
-				bundle = [NSBundle bundleWithURL:url];
+			bundle = [NSBundle bundleWithURL:url];
 
-				installAssistantAppBundle = bundle;
-			}
-			else if ([isRegularFile boolValue])
-			{
-				NSNumber *fileSize = nil;
+			installAssistantAppBundle = bundle;
 
-				if (sharedSupportURL)
-					continue;
-
-				if ([url.pathExtension isEqualToString:@"dmg"] == NO)
-					continue;
-
-				[url getResourceValue:&fileSize forKey:NSURLFileSizeKey error:nil];
-
-				if (fileSize.unsignedLongLongValue < 3ULL * 1000ULL * 1000ULL * 1000ULL) // only file bigger than 3 GB
-					continue;
-
-				sharedSupportURL = url;
-			}
-
-			if (installAssistantAppBundle && sharedSupportURL)
-				break;
+			break;
 		}
 
 		if (!installAssistantAppBundle)
@@ -803,24 +781,17 @@ int main(int argc, const char * argv[])
 			return 1;
 		}
 
-		if (!sharedSupportURL)
-		{
-			fprintf(stderr, "[-] Cannot find shared support image.\n");
-			return 1;
-		}
-
-
 		// Copy files to app.
 		fprintf(stderr, "[+] Copy files into install assistant application...\n");
 
 		NSURL *installAssistantSharedSupportURL = [installAssistantAppBundle sharedSupportURL];
-		NSURL *outputSharedSupportFileURL = [installAssistantSharedSupportURL URLByAppendingPathComponent:sharedSupportURL.lastPathComponent];
+		NSURL *outputSharedSupportFileURL = [installAssistantSharedSupportURL URLByAppendingPathComponent:@"SharedSupport.dmg"];
 
 		[[NSFileManager defaultManager] createDirectoryAtURL:installAssistantSharedSupportURL withIntermediateDirectories:YES attributes:nil error:nil];
 
-		if ([[NSFileManager defaultManager] moveItemAtURL:sharedSupportURL toURL:outputSharedSupportFileURL error:&error] == NO)
+		if ([[NSFileManager defaultManager] moveItemAtURL:inputInstallAssistantArchiveFileURL toURL:outputSharedSupportFileURL error:&error] == NO)
 		{
-			fprintf(stderr, "[-] Cannot move shared support image file (%s).\n", error.localizedDescription.UTF8String);
+			fprintf(stderr, "[-] Cannot move installer in support directory (%s).\n", error.localizedDescription.UTF8String);
 			return 1;
 		}
 
