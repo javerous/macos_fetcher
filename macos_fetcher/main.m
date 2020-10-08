@@ -755,22 +755,17 @@ int main(int argc, const char * argv[])
 
 		for (NSURL *url in outputInstallAssistantDirectoryEnumerator)
 		{
-			NSBundle	*bundle = nil;
-			NSNumber	*isDirectory = nil;
-			NSNumber	*isRegularFile = nil;
+			NSNumber *isDirectory = nil;
 
 			[url getResourceValue:&isDirectory forKey:NSURLIsDirectoryKey error:nil];
-			[url getResourceValue:&isRegularFile forKey:NSURLIsRegularFileKey error:nil];
 
-			if (installAssistantAppBundle)
+			if ([isDirectory boolValue] == NO)
 				continue;
 
 			if ([url.pathExtension isEqualToString:@"app"] == NO)
 				continue;
 
-			bundle = [NSBundle bundleWithURL:url];
-
-			installAssistantAppBundle = bundle;
+			installAssistantAppBundle = [NSBundle bundleWithURL:url];
 
 			break;
 		}
