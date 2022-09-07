@@ -3,7 +3,7 @@
 //  macos_fetcher
 //
 //  Created by Julien-Pierre Avérous on 10/11/2018.
-//  Copyright © 2018 SourceMac. All rights reserved.
+//  Copyright © 2018-2022 SourceMac. All rights reserved.
 //
 
 #import <Foundation/Foundation.h>
@@ -18,7 +18,8 @@
 */
 #pragma mark - Defines
 
-#define MFCatalogURLString @"https://swscan.apple.com/content/catalogs/others/index-10.16seed-10.16-10.15-10.14-10.13-10.12-10.11-10.10-10.9-mountainlion-lion-snowleopard-leopard.merged-1.sucatalog.gz"
+// From "/System/Library/PrivateFrameworks/Seeding.framework/Versions/A/Resources/SeedCatalogs.plist" -> "DeveloperSeed"
+#define MFCatalogURLString @"https://swscan.apple.com/content/catalogs/others/index-12seed-12-10.16-10.15-10.14-10.13-10.12-10.11-10.10-10.9-mountainlion-lion-snowleopard-leopard.merged-1.sucatalog.gz"
 
 #define MFDynamicCast(Class, Object) ({ id __obj = (Object); ([__obj isKindOfClass:[Class class]] ? ((Class *)(__obj)) : nil); })
 
@@ -973,7 +974,7 @@ int main(int argc, const char * argv[])
 			[configuration set_directoryForDownloadedFiles:temporaryDirectoryURL];
 		else
 			fprintf(stderr, "Warning: Cannot change default temporary download directory.\n");
-		
+				
 		_urlSession = [NSURLSession sessionWithConfiguration:configuration delegate:self delegateQueue:nil];
 	}
 	
@@ -1017,13 +1018,29 @@ int main(int argc, const char * argv[])
 	_currentUpdateHandler = handler;
 	_currentCompletionHandler = completionHandler;
 
-	// Create task.
-	NSURLSessionDownloadTask *downloadTask = [_urlSession downloadTaskWithURL:url];
+	// Create download task.
+	NSData 						*resumeData = nil;
+	NSURLSessionDownloadTask	*downloadTask;
 	
-	[downloadTask resume];
-	
-	// Wait.
-	dispatch_semaphore_wait(semaphore, DISPATCH_TIME_FOREVER);
+	for (NSUInteger i = 0; i < 5; i++)
+	{
+		// > Download / resume download.
+		if (resumeData)
+			downloadTask = [_urlSession downloadTaskWithResumeData:resumeData];
+		else
+			downloadTask = [_urlSession downloadTaskWithURL:url];
+		
+		[downloadTask resume];
+		
+		// > Wait.
+		dispatch_semaphore_wait(semaphore, DISPATCH_TIME_FOREVER);
+		
+		// > Handle resume data.
+		resumeData = [[resultError userInfo] objectForKey:NSURLSessionDownloadTaskResumeData];
+		
+		if (!resumeData)
+			break;
+	}
 	
 	// Conclude download status.
 	_currentUpdateHandler(downloadTask.countOfBytesReceived, downloadTask.countOfBytesExpectedToReceive);
