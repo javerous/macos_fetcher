@@ -956,7 +956,7 @@ int main(int argc, const char * argv[])
 	
 	_Atomic(BOOL)	_isRunning;
 	
-	NSDate			*_lasUpdate;
+	NSDate			*_lastUpdate;
 	
 	void (^_currentUpdateHandler)(uint64_t totalBytesWritten, uint64_t totalBytesExpectedToWrite);
 	void (^_currentCompletionHandler)(NSURL * _Nullable location, NSURLResponse * _Nullable response, NSError * _Nullable error);
@@ -1022,8 +1022,12 @@ int main(int argc, const char * argv[])
 	NSData 						*resumeData = nil;
 	NSURLSessionDownloadTask	*downloadTask;
 	
-	for (NSUInteger i = 0; i < 5; i++)
+	for (NSUInteger i = 0; i < 10; i++)
 	{
+		// > Clean state.
+		resultError = nil;
+		resultURL = nil;
+		
 		// > Download / resume download.
 		if (resumeData)
 			downloadTask = [_urlSession downloadTaskWithResumeData:resumeData];
@@ -1048,7 +1052,7 @@ int main(int argc, const char * argv[])
 	// Clean.
 	_currentUpdateHandler = nil;
 	_currentCompletionHandler = nil;
-	_lasUpdate = nil;
+	_lastUpdate = nil;
 	
 	// Clean running flag.
 	atomic_store(&_isRunning, NO);
@@ -1064,10 +1068,10 @@ int main(int argc, const char * argv[])
 {
 	NSDate *currentDate = [NSDate date];
 	
-	if (!_lasUpdate || [currentDate timeIntervalSinceDate:_lasUpdate] > 0.5)
+	if (!_lastUpdate || [currentDate timeIntervalSinceDate:_lastUpdate] > 0.5)
 	{
 		_currentUpdateHandler(totalBytesWritten, totalBytesExpectedToWrite);
-		_lasUpdate = currentDate;
+		_lastUpdate = currentDate;
 	}
 }
 
