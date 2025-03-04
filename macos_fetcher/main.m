@@ -19,7 +19,7 @@
 #pragma mark - Defines
 
 // From "/System/Library/PrivateFrameworks/Seeding.framework/Versions/A/Resources/SeedCatalogs.plist" -> "DeveloperSeed"
-#define MFCatalogURLString @"https://swscan.apple.com/content/catalogs/others/index-12seed-12-10.16-10.15-10.14-10.13-10.12-10.11-10.10-10.9-mountainlion-lion-snowleopard-leopard.merged-1.sucatalog.gz"
+#define MFCatalogURLString @"https://swscan.apple.com/content/catalogs/others/index-15seed-15-14-13-12-10.16-10.15-10.14-10.13-10.12-10.11-10.10-10.9-mountainlion-lion-snowleopard-leopard.merged-1.sucatalog.gz"
 
 #define MFDynamicCast(Class, Object) ({ id __obj = (Object); ([__obj isKindOfClass:[Class class]] ? ((Class *)(__obj)) : nil); })
 
