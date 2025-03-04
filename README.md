@@ -6,4 +6,4 @@ This tool use an Apple catalog file to download the needed pieces, put them toge
 
 There is no patching, no hacking, no trick, it just reconstruct an installer from its scattered parts.
 
-<img src="https://github.com/javerous/macos_fetcher/blob/master/screenshot.png" width="600">
+<img src="https://raw.githubusercontent.com/javerous/macos_fetcher/master/screenshot.png" width="600">
